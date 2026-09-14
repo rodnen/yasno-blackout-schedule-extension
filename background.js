@@ -1,68 +1,142 @@
 // background.js
+import { CONSTANTS } from './config/constants.js';
+import { NotificationScheduler } from './managers/NotificationScheduler.js';
 import { Utils } from './utils/utils.js';
+import { YasnoAddressApi } from './services/api/Yasnoaddressapi.js';
+import { DtekAddressApi } from './services/api/DtekAddressApi.js';
 
-const CACHE_KEY_PREFIX = 'cache:yasno:table';
-const CACHE_TTL_MIN = 20;
 const CURRENT_VERSION = chrome.runtime.getManifest().version;
 
-const AJAX_URL = 'https://www.dtek-dnem.com.ua/ua/ajax';
-const MAIN_PAGE_URL = 'https://www.dtek-dnem.com.ua/ua/shutdowns';
+const DEFAULT_PARAMS = {
+  dnem: {
+    city: 'м. Дніпро',
+    street: 'тупик Шкільний'
+  },
 
-const CITY = "м. Дніпро";
-const STREET = "тупик Шкільний";
+  kem: {
+    city: null,
+    street: 'бул. Шевченка Тараса'
+  }
+};
 
-/* ---------- утиліти часу ---------- */
-function minutesToTime(min) {
-  if (min === 1440) return '00:00';
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+const ALARM_NAME = 'checkOutageNotifications';
+
+const dtekApiInstances = {
+  dnem: new DtekAddressApi('dnem'),
+  kem: new DtekAddressApi('kem'),
+};
+
+function isYasnoType(type) {
+  return type === 'yasno';
 }
 
-/* ---------- спільний рендер рядка ---------- */
-function buildNoOutageHTML() {
-  return `
-    <div class="no-outages-msg">
-      <span>Відключення</span><br>
-      <span>не застосовуються</span>
-    </div>
-  `;
+function getDtekApi(type) {
+  const api = dtekApiInstances[type];
+  if (!api) {
+    throw new Error(`Невідомий тип DTEK: "${type}". Очікується "dnem" або "kem".`);
+  }
+  return api;
 }
 
-function buildOutdatedHTML() {
-  return `
-  <div class="_table_is_outdated">
-    <span class="clock-emoji">⏳</span>
-    <span>Очікуємо на більш актуальні дані</span>
-  </div>`;
+async function isNotificationsEnabled() {
+  const { [CONSTANTS.NOTIFICATION_ENABLED_KEY]: enabled } =
+    await Utils.getStorageData([CONSTANTS.NOTIFICATION_ENABLED_KEY]);
+  return !!enabled;
 }
 
-function buildEmergencyHTML() {
-  return `
-  <div class="emergency-shutdown">
-    <span class="police-car-emoji">🚨</span>
-    <span>Екстрені відключення, графіки не діють</span>
-  </div>`;
+async function syncAlarmState() {
+  const enabled = await isNotificationsEnabled();
+  const existing = await chrome.alarms.get(ALARM_NAME);
+
+  if (enabled && !existing) {
+    chrome.alarms.create(ALARM_NAME, { periodInMinutes: 1 });
+    console.log("[Notifications] Alarm started");
+  } else if (!enabled && existing) {
+    chrome.alarms.clear(ALARM_NAME);
+    console.log("[Notifications] Alarm stopped");
+  }
 }
 
-function buildWaitingHTML() {
+chrome.runtime.onInstalled.addListener(async (details) => {
+  syncAlarmState();
+
+  if (details.reason === 'install') {
+    const installDate = Date.now();
+    await chrome.storage.sync.set({ installDate });
+  }
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  syncAlarmState();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) {
+    NotificationScheduler.checkUpcoming();
+  }
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+
+  if (CONSTANTS.NOTIFICATION_ENABLED_KEY in changes) {
+    syncAlarmState();
+    return;
+  }
+
+  const relevant = [
+    CONSTANTS.NOTIFICATION_DELAY_KEY,
+    CONSTANTS.NOTIFICATION_FREQUENCY_KEY,
+  ];
+
+  if (relevant.some(key => key in changes)) {
+    NotificationScheduler.checkUpcoming();
+  }
+});
+
+// Конвертує хвилини доби + ISO-дату дня у Date
+function slotMinutesToTimestamp(isoDateString, minutes) {
+  const d = new Date(isoDateString);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime() + minutes * 60000;
+}
+
+function buildStatusIndicatorHTML(type) {
+  const titles = {
+    ok: 'Відключення',
+    warning: '⏳',
+    danger: '🚨',
+    info: '⏳',
+    choose: '👆'
+  }
+  const statuses = {
+    ok: 'Не застосовуються',
+    warning: 'Очікуємо на більш актуальні дані',
+    danger: 'Екстрені відключення, графіки не діють',
+    info: 'Очікуємо оновлення',
+    choose: 'Оберіть ОСР, щоб перейти до вибору черги'
+  };
+
   return `
-  <div class="waiting-for-updates">
-    <span class="clock-emoji">⏳</span>
-    <span>Очікуємо оновлення</span>
-  </div>`;
+        <div class="status-indicator flex-center flex-col">
+            <div class="status-title ${type}">${titles[type] ?? ''}</div>
+            <div class="status-badge ${type}">
+                ${statuses[type] ?? ''}
+            </div>
+        </div>
+    `;
 }
 
 function buildSlotHTML({ turn = null, start, end, isOutage, isOutdated, isNow, slotIndex, size }) {
   if ((!isOutage && slotIndex === 0 && size === 1 && !isOutdated && turn === null)) {
-    return buildNoOutageHTML();
+    return null;
   }
   return `
-    <div class="_table_element${isOutage ? ' outage' : ''}${isNow ? ' selected' : ''}" data-index="${turn}">
+    <div class="_table_element flex-between glass-panel glass-blur${isOutage ? ' outage' : ''}${isNow ? ' selected' : ''}" data-index="${turn}">
       <div style="flex: 1;">
-        <div class="_outage_time">
+        <div class="_outage_time g-5">
           ${isNow ? `<div class="_table_current_selected"></div>` : ''}
-          <span>${minutesToTime(start)} - ${minutesToTime(end)}</span>
+          <span>${Utils.minutesToTime(start)} - ${Utils.minutesToTime(end)}</span>
         </div>
         <div class="_outage_type">
           ${isOutage ? 'Світла немає' : 'Світло є'}
@@ -77,10 +151,10 @@ function buildSlotHTML({ turn = null, start, end, isOutage, isOutdated, isNow, s
 /* ---------- кешування ---------- */
 function cacheKey(cacheParts) {
   if (Array.isArray(cacheParts)) {
-    return [CACHE_KEY_PREFIX, ...cacheParts].join(':');
+    return [CONSTANTS.CACHE_KEY_PREFIX, ...cacheParts].join(':');
   }
   const sortedParts = Object.keys(cacheParts).sort().map(k => cacheParts[k]);
-  return [CACHE_KEY_PREFIX, ...sortedParts].join(':');
+  return [CONSTANTS.CACHE_KEY_PREFIX, ...sortedParts].join(':');
 }
 
 async function getCached(cacheParts) {
@@ -89,7 +163,7 @@ async function getCached(cacheParts) {
   if (!stored[key]) return null;
 
   const { ts, html } = stored[key];
-  const valid = Date.now() - ts < CACHE_TTL_MIN * 60 * 1000;
+  const valid = Date.now() - ts < CONSTANTS.CACHE_TTL_MIN * 60 * 1000;
 
   if (!valid) {
     await Utils.removeStorageData(key);
@@ -103,14 +177,14 @@ async function setCached(cacheParts, html) {
   await Utils.setStorageData({ [key]: { ts: Date.now(), html } });
 }
 
-// Окремі ключі для raw DTEK даних (не HTML, інший TTL не потрібен)
-async function getCachedDTEKRawData() {
-  const key = 'dtek:raw:data';
+// Окремі ключі для сирих даних ДТЕК
+async function getCachedDTEKRawData(type) {
+  const key = `dtek:raw:data-${type}`;
   const stored = await Utils.getStorageData(key);
   const entry = stored[key];
   if (!entry?.ts) return null;
 
-  const valid = Date.now() - entry.ts < CACHE_TTL_MIN * 60 * 1000;
+  const valid = Date.now() - entry.ts < CONSTANTS.CACHE_TTL_MIN * 60 * 1000;
   if (!valid) {
     await Utils.removeStorageData(key);
     return null;
@@ -118,64 +192,97 @@ async function getCachedDTEKRawData() {
   return entry.payload;
 }
 
+chrome.notifications.onClicked.addListener(id => {
+  if (id === 'update-available') {
+    chrome.storage.local.get('pendingUpdateUrl', ({ pendingUpdateUrl }) => {
+      if (pendingUpdateUrl) chrome.tabs.create({ url: pendingUpdateUrl });
+    });
+    chrome.notifications.clear(id);
+  }
+});
 
-
-/* ---------- оновлення розширення ---------- */
 async function checkUpdate(owner, repo) {
+  let rsp;
   try {
-    const rsp = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases?per_page=1`);
-    if (!rsp.ok) throw new Error('GitHub unreachable');
-    const [latest] = await rsp.json();
-    const { tag_name: latestVer, html_url: url, published_at: published, name: description } = latest;
-    const cmp = semverCompare(CURRENT_VERSION, latestVer);
-
-    if (cmp === -1) {
-      chrome.notifications.create('update-available', {
-        type: 'basic',
-        iconUrl: 'icons/icon128.png',
-        title: 'New version available',
-        message: `${repo} ${latestVer} is out. Click to download.`
-      });
-      chrome.notifications.onClicked.addListener(id => {
-        if (id === 'update-available') {
-          chrome.tabs.create({ url });
-          chrome.notifications.clear(id);
-        }
-      });
-    }
-
-    return { cmp, latestVer, published, description };
+    rsp = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`, {
+      headers: { 'Accept': 'application/vnd.github+json' }
+    });
   } catch (e) {
-    console.warn('[Update check]', e);
-    return null;
+    // мережева помилка (немає інтернету)
+    console.warn('[Update check] network error', e.message);
+    return { success: false, error: e.message };
   }
-}
 
-function semverCompare(a, b) {
-  const clean = v => v.replace(/^[^0-9]*/, '').split('.').map(Number);
-  const [va, vb] = [clean(a), clean(b)];
-  for (let i = 0; i < 3; i++) {
-    if (va[i] > vb[i]) return 1;
-    if (va[i] < vb[i]) return -1;
+  if (rsp.status === 403 || rsp.status === 429) {
+    const remaining = rsp.headers.get('x-ratelimit-remaining');
+    if (rsp.status === 429 || remaining === '0') {
+      const resetHeader = rsp.headers.get('x-ratelimit-reset');
+      const resetAt = resetHeader
+        ? Number(resetHeader) * 1000
+        : Date.now() + 15 * 60 * 1000;
+
+      console.warn('[Update check] rate limited until', new Date(resetAt).toISOString());
+      return { success: false, rateLimited: true, resetAt };
+    }
   }
-  return 0;
+
+  if (!rsp.ok) {
+    return { success: false, error: `GitHub недоступний (HTTP ${rsp.status})` };
+  }
+
+  let latest;
+  try {
+    latest = await rsp.json();
+  } catch (e) {
+    return { success: false, error: 'Некоректна відповідь GitHub' };
+  }
+
+  if (!latest?.tag_name) {
+    return { success: false, error: 'Релізи не знайдено' };
+  }
+
+  const { tag_name: latestVer, html_url: url, published_at: published, name: description } = latest;
+  const cmp = Utils.semverCompare(CURRENT_VERSION, latestVer);
+
+  if (cmp === -1) {
+    await chrome.storage.local.set({ pendingUpdateUrl: url });
+    chrome.notifications.create('update-available', {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: 'New version available',
+      message: `${repo} ${latestVer} is out. Click to download.`
+    });
+  }
+
+  return { success: true, cmp, latestVer, published, description };
 }
 
 /* ========================================
    YASNO
    ======================================== */
-async function buildTableHTML(group = 'all', osr = '301', currentDayNumber = new Date().getDate(), dayType = 'today') {
-  const cached = await getCached({ group, osr, dayType });
+async function buildTableHTML(group = 'all', regionId = '3', dsoId = '301', currentDayNumber = new Date().getDate(), dayType = 'today') {
+  if (regionId === 'none' || dsoId === 'none') {
+    return {
+      success: true,
+      html: buildStatusIndicatorHTML('choose'),
+      updatedOn: null,
+      outageDates: []
+    };
+  }
+
+  const cached = await getCached({ group, regionId, dsoId, dayType });
   if (cached) {
     return cached;
   }
-  const url = `https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/3/dsos/${osr}/planned-outages`;
+  const url = `https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/${regionId}/dsos/${dsoId}/planned-outages`;
   try {
+    //const data = CONSTANTS.YASNO_TEST_SAMPLE
     const data = await fetch(url).then(r => r.json());
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
 
     const rows = [];
+    const outageDates = [];
     const groups = group === 'all' ? Object.keys(data) : [group];
 
     let hasAnySlots = false;
@@ -185,6 +292,8 @@ async function buildTableHTML(group = 'all', osr = '301', currentDayNumber = new
 
     let effectiveDayType = dayType;
     let slotIndex = 0;
+
+    const updatedOn = data[groups[0]]?.updatedOn ?? null;
 
     if (effectiveDayType === 'today') {
       const todayIso = data[groups[0]]?.today?.date;
@@ -215,7 +324,7 @@ async function buildTableHTML(group = 'all', osr = '301', currentDayNumber = new
       isOutdated = schedules?.[effectiveDayType]?.status === 'WaitingForSchedule';
 
       if (slots.length) hasAnySlots = true;
-      if (isOutdated && hasAnySlots) rows.push(buildOutdatedHTML());
+      if (isOutdated && hasAnySlots) rows.push(buildStatusIndicatorHTML('warning'));
 
       for (const slot of slots) {
         rows.push(buildSlotHTML({
@@ -230,96 +339,51 @@ async function buildTableHTML(group = 'all', osr = '301', currentDayNumber = new
         }));
         slotIndex++;
       }
+
+      for (const dt of ['today', 'tomorrow']) {
+        const daySchedule = schedules?.[dt];
+        const dayIso = daySchedule?.date;
+        if (!dayIso) continue;
+
+        for (const daySlot of (daySchedule?.slots || [])) {
+          if (daySlot.type !== 'Definite') continue;
+          const slotTimestamp = slotMinutesToTimestamp(dayIso, daySlot.start);
+          if (slotTimestamp > now) outageDates.push(slotTimestamp);
+        }
+      }
     }
 
-    if (isEmergency) rows.push(buildEmergencyHTML());
-    else if (isNoOutages) rows.push(buildNoOutageHTML());
-    else if (!hasAnySlots) rows.push(buildWaitingHTML());
+    if (isEmergency) rows.push(buildStatusIndicatorHTML('danger'));
+    else if (isNoOutages) rows.push(buildStatusIndicatorHTML('ok'));
+    else if (!hasAnySlots) rows.push(buildStatusIndicatorHTML('info'));
 
-    const html = rows.join('');
-    await setCached({ group, osr, dayType }, html);
-    return html;
+    outageDates.sort((a, b) => a - b);
+
+    const result = {
+      success: true,
+      html: rows.join(''),
+      updatedOn,
+      outageDates
+    };
+
+    await setCached({ group, regionId, dsoId, dayType }, result);
+    return result;
   } catch (e) {
     console.error('[BG] Yasno: помилка', e);
-    return null;
+    return { success: false, error: { message: e.message, url: url } };
   }
 }
 
 /* ========================================
    DTEK
    ======================================== */
-
-async function fetchDTEKData(city, street) {
-  const dateStr = new Date().toLocaleString('uk-UA', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).replace(/,/g, '');
-
+async function fetchDTEKDefData(type) {
   try {
-    const pageResponse = await fetch(MAIN_PAGE_URL, {
-      method: 'GET',
-      credentials: 'include'
-    });
-
-    if (!pageResponse.ok) {
-      throw new Error('Не вдалося завантажити головну сторінку');
-    }
-
-    const html = await pageResponse.text();
-
-    const csrfToken = html.match(/<meta name="csrf-token" content="(.*?)">/)?.[1];
-    const csrfParam = html.match(/<meta name="csrf-param" content="(.*?)">/)?.[1] || '_csrf';
-
-    if (!csrfToken) {
-      throw new Error('CSRF токен не знайдено');
-    }
-
-    const formData = new URLSearchParams({
-      [csrfParam]: csrfToken,
-      method: 'getHomeNum',
-      'data[0][name]': 'city',
-      'data[0][value]': city,
-      'data[1][name]': 'street',
-      'data[1][value]': street,
-      'data[2][name]': 'updateFact',
-      'data[2][value]': dateStr
-    });
-
-    const response = await fetch(AJAX_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'Referer': MAIN_PAGE_URL,
-        'Origin': 'https://www.dtek-dnem.com.ua'
-      },
-      credentials: 'include',
-      body: formData.toString()
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    const jsonData = await response.json();
-    return jsonData;
+    const { city, street } = DEFAULT_PARAMS[type];
+    const data = await getDtekApi(type).getHomeNum({ city, street });
+    return { success: true, data: data.fact };
   } catch (error) {
-    throw error;
-  }
-}
-
-async function fetchDTEKRawData() {
-  try {
-    const data = await fetchDTEKData(CITY, STREET);
-    return data.fact;
-  } catch (error) {
-    console.error('[DTEK] Помилка:', error);
-    return null;
+    return { success: false, error: error };
   }
 }
 
@@ -350,22 +414,40 @@ function mergeSlots(slots) {
 }
 
 function renderDTEKTable(factData, group, dayType) {
-  const timestamp = factData.today;
-  const dayData = dayType === 'today'
-    ? factData.data[timestamp]
-    : factData.data[timestamp + 86400];
+  if (!factData.success) return null;
+  if (!group) return null;
 
-  if (!dayData) return '';
+  const timestamp = factData.data.today;
+
+  if (timestamp == null) return null;
+
+  const key = dayType === 'today'
+    ? timestamp
+    : timestamp + 86400;
+
+  const dayData = factData.data?.[key];
+
+  if (!dayData) return buildStatusIndicatorHTML('ok');
 
   const groups = group === 'all' ? Object.keys(dayData).filter(k => k.startsWith('GPV')) : [`GPV${group}`];
 
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
-  return groups.map(g => {
+  const outageDates = [];
+
+  const html = groups.map(g => {
     if (!dayData[g]) return '';
 
     const slots = mergeSlots(buildHalfHourSlots(dayData[g]));
+
+    slots.forEach(slot => {
+      if (slot.status === 'outage') {
+        const baseTs = dayType === 'today' ? todayTimestamp : tomorrowTimestamp;
+        const slotTimestamp = Utils.minutesToDate(baseTs, slot.start);
+        if (slotTimestamp > now) outageDates.push(slotTimestamp);
+      }
+    });
 
     return slots.map((slot, slotIndex) => buildSlotHTML({
       turn: group === 'all' ? g.replace("GPV", "") : null,
@@ -379,73 +461,220 @@ function renderDTEKTable(factData, group, dayType) {
     })).join('');
 
   }).join('');
-}
 
-async function buildTableHTMLDTEK(group = 'all', dayType = 'today') {
-  const cached = await getCached(['dtek', group, dayType]);
-  if (cached) {
-    return cached;
+  if (dayType === 'today') {
+    const tomorrowData = factData.data[tomorrowTimestamp];
+    if (tomorrowData) {
+      groups.forEach(g => {
+        if (!tomorrowData[g]) return;
+        const slots = mergeSlots(buildHalfHourSlots(tomorrowData[g]));
+        slots.forEach(slot => {
+          if (slot.status === 'outage') {
+            outageDates.push(Utils.minutesToDate(tomorrowTimestamp, slot.start));
+          }
+        });
+      });
+    }
   }
 
-  let rawData = await getCachedDTEKRawData();
+  outageDates.sort((a, b) => a - b);
+  return { html, outageDates };
+}
 
+async function buildTableHTMLDTEK(type = 'dnem', group = 'all', dayType = 'today') {
+  if (type === 'none') {
+    return {
+      success: true,
+      html: buildStatusIndicatorHTML('choose'),
+      updatedOn: null,
+      outageDates: []
+    };
+  }
+
+  const cached = await getCached([`dtek-${type}`, type, group, dayType]);
+  if (cached) return cached;
+
+  let rawData = await getCachedDTEKRawData(type);
+  const fromCache = !!rawData;
   if (!rawData) {
-    rawData = await fetchDTEKRawData();
+    rawData = await fetchDTEKDefData(type);
     if (!rawData) return null;
-
+  }
+ 
+  if (!fromCache) {
+    const key = `dtek:raw:data-${type}`;
     Utils.setStorageData({
-      'dtek:raw:data': { payload: rawData, ts: Date.now() }
+      [key]: {
+        payload: rawData,
+        ts: Date.now()
+      }
     });
   }
 
-  const html = renderDTEKTable(rawData, group, dayType);
-  await setCached(['dtek', group, dayType], html);
-  return html;
+  const result = {
+    success: rawData.success,
+    html: renderDTEKTable(rawData, group, dayType),
+    error: rawData.error,
+    updatedOn: Utils.toIso(rawData.data?.update)
+  };
+
+  await setCached([`dtek-${type}`, type, group, dayType], result);
+  return result;
 }
 
-async function getHouseNumbers(city, street) {
+/* ========================================
+   АДРЕСИ (Yasno + DTEK) — міста, вулиці, будинки
+   ======================================== */
+
+// Тільки Yasno: DTEK не має окремого ендпоінта для списку міст.
+// params: { regionId, dsoId, query }
+async function getCities(params) {
   try {
-    const data = await fetchDTEKData(city, street);
+    const { regionId, dsoId, query } = params;
+    const api = new YasnoAddressApi({ regionId, dsoId });
+    const data = await api.getCities(query);
     return { success: true, data };
   } catch (error) {
-    console.error('Final Error:', error);
-    return { success: false, error: error.message };
+    console.error('[Address] помилка getCities:', error);
+    return { success: false, error };
   }
 }
 
-async function getHouseData(city, street, house) {
+// type: 'yasno' | 'dtek'
+// Yasno params: { regionId, dsoId, cityId, query }
+// DTEK params:  { city (лише для dnem), query — не використовується }
+async function getStreets(type, params) {
   try {
-    const response = await fetchDTEKData(city, street);
-    const data = response.data[house] || response.data.data[house] || {};
+    if (isYasnoType(type)) {
+      const { regionId, dsoId, cityId, query } = params;
+      const api = new YasnoAddressApi({ regionId, dsoId });
+      const data = await api.getStreets(cityId, query);
+      return { success: true, data };
+    }
+
+    const api = getDtekApi(type);
+    const { query } = params;
+    const data = await api.getStreets({ city: query });
+    return { success: true, data };
+  } catch (error) {
+    console.error('[Address] помилка getStreets:', error);
+    return { success: false, error };
+  }
+}
+
+// type: 'yasno' | 'dnem' | 'kem'
+// Yasno params: { regionId, dsoId, cityId, streetId, query }
+// DTEK params:  { city (лише для dnem), street }
+async function getHouses(type, params) {
+  try {
+    if (isYasnoType(type)) {
+      const { regionId, dsoId, cityId, streetId, query } = params;
+      const api = new YasnoAddressApi({ regionId, dsoId });
+      const data = await api.getHouses(cityId, streetId, query);
+      return { success: true, data };
+    }
+
+    const api = getDtekApi(type);
+    const data = await api.getHomeNum(params); // { city, street }
+    return { success: true, data };
+  } catch (error) {
+    console.error('[Address] помилка getHouseNumbers:', error);
+    return { success: false, error };
+  }
+}
+
+// type: 'yasno' | 'dnem' | 'kem'
+// Yasno params: { regionId, dsoId, cityId, streetId, houseId }
+// DTEK params:  { city (лише для dnem), street, house }
+async function getHouseData(type, params) {
+  try {
+    if (isYasnoType(type)) {
+      const { regionId, dsoId, cityId, streetId, houseId } = params;
+      const api = new YasnoAddressApi({ regionId, dsoId });
+      const data = await api.getGroup(cityId, streetId, houseId);
+      return { success: true, data };
+    }
+
+    const api = getDtekApi(type);
+    const { house } = params;
+    const response = await api.getHomeNum(params);
+
+    const data = response.data?.[house] || response.data?.data?.[house] || {};
     const updateTimestamp = response.updateTimestamp;
     return { success: true, data, updateTimestamp };
   } catch (error) {
-    console.error('Final Error:', error);
-    return { success: false, error: error.message };
+    console.error('[DTEK/Yasno] помилка getHouseData:', error);
+    return { success: false, error };
   }
 }
-
 
 /* ---------- messaging ---------- */
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const handlers = {
-    checkUpdate: () => checkUpdate(msg.owner, msg.repo).then(result => sendResponse({ result })),
-    fetchYasno: () => buildTableHTML(msg.group, msg.osr, msg.currentDayNumber, msg.dayType).then(sendResponse),
-    fetchDTEK: () => buildTableHTMLDTEK(msg.group, msg.dayType).then(sendResponse),
-    fetchHouses: () => getHouseNumbers(msg.city, msg.street).then(sendResponse),
-    fetchHouseData: () => getHouseData(msg.city, msg.street, msg.house).then(sendResponse),
-    clearCache: () => clearAllCache().then(() => sendResponse({ ok: true }))
+    //Перевірка оновлень розширення
+    checkUpdate: () => checkUpdate(msg.owner, msg.repo)
+      .then(result => sendResponse({ result }))
+      .catch(error => sendResponse({ result: { success: false, error: error.message } })),
+
+    //Фетч даних та побудовка таблиці з відключеннями для Ясно
+    fetchYasno: () => buildTableHTML(msg.group, msg.regionId, msg.dsoId, msg.currentDayNumber, msg.dayType)
+      .then(async (result) => {
+        if (result.success && result.outageDates) {
+          await NotificationScheduler.saveOutageSchedule(result.outageDates);
+        }
+        sendResponse(result);
+      }),
+
+    //Фетч даних та побудовка таблиці з відключеннями для ДТЕК
+    fetchDTEK: () => buildTableHTMLDTEK(msg.type, msg.group, msg.dayType)
+      .then(async (result) => {
+        if (result.success && result.outageDates) {
+          await NotificationScheduler.saveOutageSchedule(result.outageDates);
+        }
+        sendResponse(result);
+      }),
+
+    // msg.params: { regionId, dsoId, query }
+    fetchCity: () => getCities(msg.params).then(sendResponse),
+    // msg.type: 'yasno' | 'dnem' | 'kem'
+    fetchStreet: () => getStreets(msg.type, msg.params).then(sendResponse),
+    // msg.type: 'yasno' | 'dnem' | 'kem'
+    fetchHouses: () => getHouses(msg.type, msg.params).then(sendResponse),
+    // msg.type: 'dnem' | 'kem' (Yasno не підтримується, див. getHouseData)
+    fetchHouseData: () => getHouseData(msg.type, msg.params).then(sendResponse),
+
+    //Очищення кешу розширення
+    clearTableCache: () => clearTableCache().then((result) => sendResponse(result)),
+    clearAllCache: () => clearAllCache().then((result) => sendResponse(result))
   };
 
   const handler = handlers[msg.action];
   if (handler) { handler(); return true; }
 });
 
-async function clearAllCache() {
-  const all = await chrome.storage.local.get();
-  const toRemove = Object.keys(all).filter(k => k.startsWith(CACHE_KEY_PREFIX));
+async function clearTableCache() {
+  try {
 
-  if (toRemove.length) {
-    await chrome.storage.local.remove(toRemove);
+    const all = await chrome.storage.local.get();
+    const toRemove = Object.keys(all).filter(k => k.startsWith(CONSTANTS.CACHE_KEY_PREFIX));
+    if (toRemove.length) await chrome.storage.local.remove(toRemove);
+    return { success: true, removed: toRemove.length };
+  }
+  catch (e) {
+    return { success: false, error: e };
+  }
+}
+
+async function clearAllCache() {
+  try {
+    const all = await chrome.storage.local.get();
+    const removedCount = Object.keys(all).length;
+
+    await chrome.storage.local.clear();
+
+    return { success: true, removed: removedCount };
+  }
+  catch (e) {
+    return { success: false, error: e.message };
   }
 }

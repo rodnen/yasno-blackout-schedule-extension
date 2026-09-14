@@ -1,25 +1,24 @@
-// strategies/modeStrategies.js
+import { Utils } from '../utils/utils.js';
 export const MODE_STRATEGIES = {
   yasno: {
     action: 'fetchYasno',
-    storageKey: ['lastGroup', 'lastOsr'],
-    buildPayload: ({ group, osr, currentDayNumber, dayType }) => ({
+    buildPayload: ({ group, regionId, dsoId, currentDayNumber, dayType }) => ({
       action: 'fetchYasno',
       group,
-      osr,
+      regionId,
+      dsoId,
       currentDayNumber,
       dayType
     }),
-    getStorageData: ({ group, osr }) => ({ lastGroup: group, lastOsr: osr }),
   },
 
   dtek: {
     action: 'fetchDTEK',
-    buildPayload: ({ group, dayType }) => ({
+    buildPayload: ({ group, dsoId, dayType }) => ({
       action: 'fetchDTEK',
+      type: Utils.DSOID_TO_DTEK_TYPE[dsoId],
       group,
-      dayType
+      dayType,
     }),
-    getStorageData: ({ group }) => ({ lastGroup: group }),
   }
 };

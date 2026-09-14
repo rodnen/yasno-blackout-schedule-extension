@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Графік відключень",
+  "name": "Видко",
   "description": "Перевірка відключень світла за чергою",
-  "version": "1.2.5",
+  "version": "1.3.0",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -18,21 +18,22 @@
   },
   "permissions": [
     "storage",
+    "alarms",
     "notifications",
-    "activeTab",
-    "cookies"
+    "clipboardWrite"
   ],
   "host_permissions": [
-    "https://static.yasno.ua/*",
     "https://app.yasno.ua/*",
     "https://www.dtek-dnem.com.ua/*",
-    "https://admin.dtek-dnem.com.ua/*"
+    "https://www.dtek-kem.com.ua/*"
   ],
   "web_accessible_resources": [
     {
       "resources": [
-        "icons/*"
+        "icons/*",
+        "data/*"
       ],
+
       "matches": [
         "<all_urls>"
       ]

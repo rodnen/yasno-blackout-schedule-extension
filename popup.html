@@ -7,105 +7,124 @@
   <link rel="stylesheet" href="css/colors.css">
 </head>
 
-<body>
-  <header>
-    <div id="controls">
-      <div class="select-wrapper">
-
-        <div class="custom-select queue-select" name="queue" data-value="all" title="Черга">
-          <label for="queue" class="select-label">Черга</label>
-          <div class="select-trigger"></div>
-          <div class="select-options">
-            <div class="option" data-value="all">Усі</div>
-            <div class="option" data-value="1.1">1.1</div>
-            <div class="option" data-value="1.2">1.2</div>
-            <div class="option" data-value="2.1">2.1</div>
-            <div class="option" data-value="2.2">2.2</div>
-            <div class="option" data-value="3.1">3.1</div>
-            <div class="option" data-value="3.2">3.2</div>
-            <div class="option" data-value="4.1">4.1</div>
-            <div class="option" data-value="4.2">4.2</div>
-            <div class="option" data-value="5.1">5.1</div>
-            <div class="option" data-value="5.2">5.2</div>
-            <div class="option" data-value="6.1">6.1</div>
-            <div class="option" data-value="6.2">6.2</div>
-          </div>
+<body class="flex-col">
+  <header class="flex-col">
+    <div class="app-header p-8 flex-between">
+      <div class="brand g-075 flex-center">
+        <div class="btn app-btn brand-icon flex-center glass-panel">
+          <div class="app-icon"></div>
         </div>
-
-        <div class="custom-select osr-select has-value" name="osr" data-value="301" title="Оператор системи розподілу">
-          <label for="osr" class="select-label">ОСР</label>
-          <div class="select-trigger">ДнЕМ</div>
-          <div class="select-options">
-            <div class="option" data-value="301">ДнЕМ</div>
-            <div class="option" data-value="303">ЦЕК</div>
-            <!--<div class="option" data-value="kyiv">КЕМ</div>-->
-          </div>
+        <div class="brand-name flex-col">
+          <span class="secondary-text">Видко</span>
+          <span class="thirdly-text">Моніторинг відключень</span>
         </div>
+      </div>
 
-        <div id="date-group" class="date-select">
-          <div class="date-indicator"></div>
+      <div class="app-header-btns g-8 flex-center">
 
-          <button class="date-btn active" data-type="today" title="Сьогодні"></button>
-          <button class="date-btn" data-type="tomorrow" title="Завтра"></button>
-        </div>
+        <button class="btn app-btn g-6 flex-center glass-panel" data-action="refresh" title="Оновити дані">
+          <div class="btn-icon ic_refresh"></div>
+        </button>
 
-        <div id="dots-btn">
-          <button class="menu combine" title="Відкрити меню Yasno Extension">
-            <span class="menu__inner"></span>
+        <div class="app-menu z-3 flex-center">
+          <button class="btn app-btn g-6 flex-center glass-panel" data-action="openMenu" title="Відкрити меню">
+            <div class="btn-icon ic_dots"></div>
           </button>
 
           <!-- Popup Menu -->
-          <div id="popup-menu" class="popup-menu">
-            
-            <button class="menu-item close-at-click" data-action="refresh" title="Оновити дані">
-              <span class="menu-icon">🔄️</span>
-              <div class="menu-content">
-                <span>Оновити</span>
-              </div>
-            </button>
+          <div id="popup-menu" class="popup-menu z-999 glass-panel glass-blur">
 
-            <button class="menu-item" data-action="mode" title="ДТЕК режим">
+            <button class="menu-item g-075" data-action="mode" title="ДТЕК режим">
               <span class="menu-icon">💡</span>
-              <div class="menu-content">
+              <div class="menu-content flex-between">
                 <span>ДТЕК режим</span>
-                <label class="switch" for="checkbox">
-                  <input type="checkbox" id="checkbox" />
+                <label class="custom-checkbox" for="checkbox">
+                  <input type="checkbox" id="checkbox-mode" />
                   <div class="slider round"></div>
                 </label>
               </div>
             </button>
 
-            <button class="menu-item" data-action="theme" title="Тема">
+            <button class="menu-item g-075" data-action="theme" title="Тема">
               <span class="menu-icon">🖥️</span>
-              <div class="menu-content">
+              <div class="menu-content flex-between">
                 <span>Тема</span>
                 <span>Система</span>
               </div>
             </button>
 
+            <button class="menu-item g-075 close-at-click" data-action="notification"
+              title="Сповіщення про відключення">
+              <span class="menu-icon">🔕</span>
+              <div class="menu-content flex-between">
+                <span>Сповіщення</span>
+                <span>Вимкнено</span>
+              </div>
+            </button>
+
+            <button class="menu-item g-075 close-at-click" data-action="support" title="Підтримати">
+              <span class="menu-icon">💸</span>
+              <div class="menu-content flex-between">
+                <span>Підтримати проєкт</span>
+              </div>
+            </button>
+
             <div class="menu-separator"></div>
 
-            <div class="popup-combined">
-              <button class="menu-item close-at-click" data-action="about" title="Про розширення">
+            <div class="popup-combined flex-row">
+              <button class="menu-item g-075 close-at-click" data-action="about" title="Про розширення">
                 <span class="menu-icon">ℹ️</span>
-                <div class="menu-content">
+                <div class="menu-content flex-between">
                   <span>Про розширення</span>
                 </div>
               </button>
-              <button class="menu-item close-at-click danger" data-action="bug-report" title="Повідомити про помилку">
+              <button class="menu-item g-075 close-at-click danger flex-center" data-action="bug-report"
+                title="Повідомити про помилку">
                 <span class="menu-icon">🪲</span>
               </button>
             </div>
           </div>
         </div>
+
       </div>
+    </div>
+
+    <div class="app-controls g-15 p-8 flex-col" id="controls">
+
+      <div class="app-date-wrapper">
+        <div id="date-group" class="date-select glass-panel">
+          <div class="date-indicator"></div>
+
+          <button class="date-btn z-1 active" data-type="today" title="Сьогодні"></button>
+          <button class="date-btn z-1" data-type="tomorrow" title="Завтра"></button>
+        </div>
+      </div>
+
+      <div class="select-wrapper z-2 g-8 flex-between">
+
+        <div class="custom-select flex-center queue-select glass-panel" name="queue" data-value="all" title="Черга">
+          <label for="queue" class="select-label">Черга</label>
+          <div class="select-trigger"></div>
+          <div class="select-options z-999 glass-panel glass-blur">
+          </div>
+        </div>
+
+        <div class="custom-select flex-center dso-select glass-panel" name="dsoId" data-region="none"
+          data-value="none" title="Оператор системи розподілу">
+          <label for="dsoId" class="select-label">ОСР</label>
+          <div class="select-trigger"></div>
+          <div class="select-options z-999 glass-panel glass-blur">
+          </div>
+        </div>
+      </div>
+
     </div>
   </header>
 
-  <div id="content-wrapper">
+  <div id="content-wrapper" class="flex-col">
 
-    <div id="content-box" class="loading">
-      <div class="loading-wrapper">
+    <div id="content-box" class="loading flex-center flex-col p-8 ">
+      <div class="loading-wrapper g-10 flex-center flex-row">
         <div class="loader"></div>
         <p>Йде завантаження…</p>
       </div>
@@ -114,19 +133,21 @@
   </div>
   <script type="module" src="popup.js"></script>
 
-  <footer>
+  <footer class="app-footer flex-between p-8 g-10">
     <div class="author">created by <a href="https://github.com/rodnen" target="_blank">rodnen</a></div>
     <!--<div id="current-mode"><img src="icons/ic_yasno.png"></div>-->
   </footer>
   </div>
 
-  <div id="dialog" class="_dialog-wrapper">
-    <div class="_dialog">
-      <span class="title"></span>
+  <div id="dialogWrapper" class="_dialog-wrapper z-4 flex-center glass-blur">
+    <div id="dialog" class="_dialog glass-panel glass-blur flex-col">
+      <div class="dialog-header p-8 flex-center">
+        <span class="dialog-title"></span>
+      </div>
 
       <div class="divider"></div>
 
-      <div class="content"></div>
+      <div class="dialog-content"></div>
     </div>
 </body>
 

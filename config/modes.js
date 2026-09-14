@@ -1,0 +1,1 @@
+export const MODE_KEY = { 0: 'yasno', 1: 'dtek' };

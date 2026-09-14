@@ -1,4 +1,5 @@
 // utils.js
+import { MODE_KEY } from '../config/modes.js';
 const months = Object.freeze(["січ", "лют", "бер", "квіт", "трав", "чер", "лип", "серп", "вер", "жовт", "лист", "груд"]);
 
 /**
@@ -11,11 +12,20 @@ class Utils {
      * @returns {Promise<any>} - відповідь
      */
     static sendMessage(message) {
-        return new Promise(resolve => chrome.runtime.sendMessage(message, resolve));
+        return new Promise(resolve => {
+            chrome.runtime.sendMessage(message, response => {
+                if (chrome.runtime.lastError) {
+                    console.warn('sendMessage:', chrome.runtime.lastError.message);
+                    resolve(undefined);
+                    return;
+                }
+                resolve(response);
+            });
+        });
     }
 
     /**
-     * Форматує дату у вигляді "день місяць."
+     * Форматує дату у вигляді "день місяць." наприклад "4 бер."
      * @param {Date} date - дата для форматування
      * @returns {string} - відформатована дата
      */
@@ -25,7 +35,7 @@ class Utils {
     }
 
     /**
-     * Форматує рядок дати та часу у вигляді "HH:MM день місяць. рік р."
+     * Форматує рядок дати та часу у вигляді "HH:MM день місяць. рік р." наприклад "12:41 4 бер. 2026р."
      * @param {string} dateStr - рядок у форматі "HH:MM DD.MM.YYYY"
      * @returns {string} - відформатований рядок або "—" якщо дані відсутні
      */
@@ -41,8 +51,15 @@ class Utils {
         return `${time} ${dayNumber} ${months[monthIndex]}. ${year} р.`;
     }
 
+    static formatDateOnly(date) {
+        const d = new Date(date);
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${d.getDate()} ${months[d.getMonth()]}. ${d.getFullYear()} р.`;
+    }
+
     /**
-     * Форматує об'єкт Date у вигляді "HH:MM день місяць. рік р."
+     * Форматує об'єкт Date у вигляді "HH:MM день місяць. рік р." наприклад "12:41 4 бер. 2026р."
      * @param {Date|string|number} date - дата для форматування
      * @returns {string} - відформатований рядок
      */
@@ -51,6 +68,37 @@ class Utils {
         const hours = String(d.getHours()).padStart(2, '0');
         const minutes = String(d.getMinutes()).padStart(2, '0');
         return `${hours}:${minutes} ${d.getDate()} ${months[d.getMonth()]}. ${d.getFullYear()} р.`;
+    }
+
+    static formatUpdatedOn(updatedOn) {
+        const date = new Date(updatedOn);
+        const now = new Date();
+
+        const time = date.toLocaleTimeString('uk-UA', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        const isSameDay = (a, b) =>
+            a.getFullYear() === b.getFullYear() &&
+            a.getMonth() === b.getMonth() &&
+            a.getDate() === b.getDate();
+
+        if (isSameDay(date, now)) {
+            return `Оновлено ${time}`;
+        }
+
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+
+        if (isSameDay(date, yesterday)) {
+            return `Оновлено вчора о ${time}`;
+        }
+
+        const day = date.getDate();
+        const month = months[date.getMonth()];
+
+        return `Оновлено ${day} ${month} ${time}`;
     }
 
     /**
@@ -67,6 +115,19 @@ class Utils {
         const d = new Date(year, month - 1, day, hours, minutes);
 
         return d.getTime();
+    }
+
+    /* ---------- утиліти часу ---------- */
+    static minutesToTime(min) {
+        if (min === 1440) return '00:00';
+        const h = Math.floor(min / 60);
+        const m = min % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    // Конвертує хвилини доби (0-1439) + unix-timestamp дня (сек) у Date
+    static minutesToDate(baseTimestampSec, minutes) {
+        return new Date((baseTimestampSec + minutes * 60) * 1000);
     }
 
     /**
@@ -115,81 +176,17 @@ class Utils {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    /**
-     * Встановлює режим DTEK для селекта (блокує взаємодію)
-     * @param {HTMLElement} el - елемент селекта
-     * @param {HTMLElement} mEl - елемент з favicon режиму
-     * @returns {void}
-     */
-    static setDTEKMode(el, mEl = null) {
-        if (!el || el.dataset.hidden === "true") return;
-
-        el.dataset.hidden = "true";
-
-        const trigger = el.querySelector(".select-trigger");
-        const options = el.querySelector(".select-options");
-
-        if (trigger) {
-            trigger.textContent = "ДТЕК";
-        }
-
-        if (options) {
-            options.style.pointerEvents = "none";
-            options.style.opacity = "0.5";
-        }
-
-        el.style.pointerEvents = "none";
-
-        if (mEl) mEl.querySelector('img').src = "/icons/ic_dtek.png";
+    static shortenId(id, startLen = 5, endLen = 5) {
+        if (!id || id.length <= startLen + endLen) return id;
+        return `${id.slice(0, startLen)}...${id.slice(-endLen)}`;
     }
 
-    /**
-     * Встановлює режим Yasno для селекта (розблоковує взаємодію та відновлює значення)
-     * @param {HTMLElement} el - елемент селекта
-     * @param {HTMLElement} mEl - елемент з favicon режиму
-     * @returns {Promise<void>}
-     */
-    static async setYasnoMode(el, mEl = null) {
-        if (!el) return;
-
-        const trigger = el.querySelector(".select-trigger");
-        const options = el.querySelector(".select-options");
-
-        el.style.pointerEvents = "";
-        if (options) {
-            options.style.pointerEvents = "";
-            options.style.opacity = "";
-        }
-
-        const data = await Utils.getStorageData(['lastGroup', 'lastOsr']);
-        const savedValue = data?.lastOsr;
-
-        const allOptions = el.querySelectorAll(".option");
-        let selectedOption = null;
-
-        if (savedValue) {
-            selectedOption = [...allOptions].find(opt => opt.dataset.value === savedValue);
-        }
-
-        if (!selectedOption && allOptions.length > 0) {
-            selectedOption = allOptions[0];
-        }
-
-        if (selectedOption) {
-            if (trigger) {
-                trigger.textContent = selectedOption.textContent;
-            }
-            el.dataset.value = selectedOption.dataset.value;
-        }
-
-        if (mEl) mEl.querySelector('img').src = "/icons/ic_yasno.png";
-
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                delete el.dataset.hidden;
-            });
-        });
-    }
+    static DSOID_TO_DTEK_TYPE = {
+        'none': 'none', //Не обрано
+        301: 'dnem',    // ДНЕМ
+        303: 'сek',     // ЦЕК
+        902: 'kem',     // КЕМ
+    };
 
     static setErrorTextarea(el) {
         el.closest('.custom-textarea')?.classList.add('input-error');
@@ -203,12 +200,130 @@ class Utils {
      * Генерує HTML для відображення помилки завантаження
      * @returns {string} - HTML рядок
      */
-    static buildLoadErrorHTML() {
+    static buildLoadErrorHTML(error = {}) {
         return `
-        <p class="message">Не вдалося завантажити дані 😢</p>
+        <p class="message p-8">Не вдалося завантажити дані 😢</p>
+
+        ${error?.message
+                ? `<p class="message p-8 secondary-text">Причина: ${error.message}</p>`
+                : ''}
+
+        ${error?.url
+                ? `<a href="${error.url}" target="_blank" rel="noopener noreferrer" class="message p-8 secondary-text">Відкрити сайт</a>`
+                : ''}
+
         <br>
-        <p class="message secondary-text">Перевірте з'єднання або перезапустіть розширення</p>
-      `;
+
+        <p class="message p-8 secondary-text">Перевірте з'єднання або перезапустіть розширення.</p>
+        <p class="message p-8 secondary-text">Якщо помилка не зникає - спробуйте <b>очистити кеш</b> у розділі «Про розширення».</p>
+    `;
+    }
+
+    /**
+   * Повертає розмір даних у chrome.storage.local.
+   * @param {string|string[]|null} keys null - усі ключі
+   * @returns {Promise<{bytes:number, formatted:string}>}
+   */
+    static async getStorageSize(keys = null) {
+        const bytes = await chrome.storage.local.getBytesInUse(keys);
+
+        return {
+            bytes,
+            formatted: this.formatBytes(bytes)
+        };
+    }
+
+    /**
+    * Форматує байти у найближчу одиницю.
+    * @param {number} bytes
+    * @param {number} decimals
+    * @returns {string}
+    */
+    static formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Б';
+
+        const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+        const index = Math.min(
+            Math.floor(Math.log(bytes) / Math.log(1024)),
+            units.length - 1
+        );
+
+        const value = bytes / Math.pow(1024, index);
+
+        return `${value.toFixed(index === 0 ? 0 : decimals)} ${units[index]}`;
+    }
+
+    static toIso(str) {
+        if (typeof str !== 'string' || !str.trim()) {
+            return null;
+        }
+
+        const match = str.trim().match(
+            /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})$/
+        );
+
+        if (!match) {
+            return null;
+        }
+
+        const [, day, month, year, hours, minutes] = match;
+
+        const date = new Date(
+            Date.UTC(
+                Number(year),
+                Number(month) - 1,
+                Number(day),
+                Number(hours),
+                Number(minutes)
+            )
+        );
+
+        if (
+            date.getUTCFullYear() !== Number(year) ||
+            date.getUTCMonth() !== Number(month) - 1 ||
+            date.getUTCDate() !== Number(day) ||
+            date.getUTCHours() !== Number(hours) ||
+            date.getUTCMinutes() !== Number(minutes)
+        ) {
+            return null;
+        }
+
+        return `${year}-${month}-${day}T${hours}:${minutes}:00+00:00`;
+    }
+
+    static semverCompare(a, b) {
+        const clean = v => v.replace(/^[^0-9]*/, '').split('.').map(Number);
+        const [va, vb] = [clean(a), clean(b)];
+        for (let i = 0; i < 3; i++) {
+            if (va[i] > vb[i]) return 1;
+            if (va[i] < vb[i]) return -1;
+        }
+        return 0;
+    }
+
+    static async getInstallDate() {
+        const { installDate } = await chrome.storage.sync.get('installDate');
+        return installDate ? installDate : undefined;
+    }
+
+    static async copyStaticText(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (err) {
+            console.error("Error: ", err);
+            return false;
+        }
+    }
+
+    static async getMode() {
+        const { mode } = await this.getStorageData(['mode']);
+        return { mode }
+    }
+
+    static async getModeKey() {
+        const { mode } = await this.getMode();
+        return MODE_KEY[mode ?? 0];
     }
 }
 

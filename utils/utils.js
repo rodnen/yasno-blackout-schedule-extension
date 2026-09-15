@@ -1,6 +1,7 @@
 // utils.js
 import { MODE_KEY } from '../config/modes.js';
 const months = Object.freeze(["січ", "лют", "бер", "квіт", "трав", "чер", "лип", "серп", "вер", "жовт", "лист", "груд"]);
+const INVALID_VALUES = new Set([undefined, null, '', 'none']);
 
 /**
  * Утилітарний клас для роботи з Chrome API та загальними функціями
@@ -219,6 +220,33 @@ class Utils {
     `;
     }
 
+    static buildStatusIndicatorHTML(type) {
+        const titles = {
+            ok: 'Відключення',
+            warning: '⏳',
+            danger: '🚨',
+            info: '⏳',
+            choose: '👆'
+        }
+        const statuses = {
+            ok: 'Не застосовуються',
+            warning: 'Очікуємо на більш актуальні дані',
+            danger: 'Екстрені відключення, графіки не діють',
+            info: 'Очікуємо оновлення',
+            choose: 'Оберіть ОСР, щоб перейти до вибору черги'
+        };
+
+        return `
+        <div class="status-indicator flex-center flex-col">
+            <div class="status-title ${type}">${titles[type] ?? ''}</div>
+            <div class="status-badge ${type}">
+                ${statuses[type] ?? ''}
+            </div>
+        </div>
+    `;
+    }
+
+
     /**
    * Повертає розмір даних у chrome.storage.local.
    * @param {string|string[]|null} keys null - усі ключі
@@ -325,6 +353,8 @@ class Utils {
         const { mode } = await this.getMode();
         return MODE_KEY[mode ?? 0];
     }
+
+    static isInvalidValue = (...values) => values.some(value => INVALID_VALUES.has(value));
 }
 
 // Експорт для використання як модуль

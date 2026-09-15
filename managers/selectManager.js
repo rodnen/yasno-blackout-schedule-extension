@@ -231,6 +231,7 @@ export class SelectManager {
 
     loadSavedValues() {
         const saved = this.cache.getSelect(this.#currentMode);
+        let dsoChanged = false;
 
         const dsoSelect = this.selects.find(s => s.type === 'dsoId');
         if (dsoSelect) {
@@ -241,7 +242,7 @@ export class SelectManager {
             this.setSelectValue(dsoSelect.element, dsoSelect.type, dsoIdValue, dsoSelect.defaultValue);
 
             this.#handleRegionChange(dsoSelect.element.dataset.region, false);
-             this.onSelectionChange?.('dsoId');
+            dsoChanged = true;
         }
 
         const queueSelect = this.selects.find(s => s.type === 'queue');
@@ -249,9 +250,9 @@ export class SelectManager {
             const savedQueue = saved.group;
             const exists = savedQueue && queueSelect.element?.querySelector(`.option[data-value="${savedQueue}"]`);
             this.setSelectValue(queueSelect.element, queueSelect.type, exists ? savedQueue : queueSelect.defaultValue, queueSelect.defaultValue);
-            this.onSelectionChange?.('queue');
         }
 
+        this.onSelectionChange?.(dsoChanged ? 'dsoId' : 'queue');
     }
 
     getValues() {

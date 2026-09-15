@@ -10,6 +10,63 @@ export class BoxView {
         this.#footer = dom.footer;
     }
 
+    #createUpdatedWrapper() {
+        const container = document.createElement('div');
+        container.className = 'updated-wrapper';
+        this.#footer.prepend(container);
+        return container;
+    }
+
+    #expandUpdatedOn(container, text) {
+        let el = container.querySelector('.updated-on');
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'updated-on glass-panel secondary-text';
+            container.appendChild(el);
+        }
+        el.textContent = text;
+
+        const width = el.getBoundingClientRect().width;
+        container.style.width = `${width}px`;
+
+        if (!container.classList.contains('is-expanded')) {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    container.classList.add('is-expanded');
+                    container.addEventListener('transitionend', (e) => {
+                        if (e.target !== container) return;
+                        requestAnimationFrame(() => el.classList.add('is-visible'));
+                    }, { once: true });
+                });
+            });
+        } else {
+            requestAnimationFrame(() => el.classList.add('is-visible'));
+        }
+    }
+
+    #collapseUpdatedOn(container) {
+        if (!container) return;
+
+        const el = container.querySelector('.updated-on');
+
+        const collapse = () => {
+            container.style.width = '0px';
+            container.classList.remove('is-expanded');
+            container.addEventListener('transitionend', (e) => {
+                if (e.target === container) container.remove();
+            }, { once: true });
+        };
+
+        if (el) {
+            el.classList.remove('is-visible');
+            el.addEventListener('transitionend', (e) => {
+                if (e.target === el) collapse();
+            }, { once: true });
+        } else {
+            collapse();
+        }
+    }
+
     showLoading(message = 'Йде завантаження…') {
         this.#box.classList.remove('error', 'flex-center');
         this.#box.classList.add('loading', 'flex-center');
@@ -29,81 +86,30 @@ export class BoxView {
     }
 
     setUpdatedOn(updatedOn) {
-        let container = this.#footer.querySelector('.updated-wrapper');
+        const container = this.#footer.querySelector('.updated-wrapper');
 
         if (updatedOn == null) {
-            if (!container) return;
-
-            const el = container.querySelector('.updated-on');
-
-            const collapse = () => {
-                container.style.width = '0px';
-                container.classList.remove('is-expanded');
-                container.addEventListener('transitionend', (e) => {
-                    if (e.target === container) container.remove();
-                }, { once: true });
-            };
-
-            if (el) {
-                el.classList.remove('is-visible');
-                el.addEventListener('transitionend', (e) => {
-                    if (e.target === el) collapse();
-                }, { once: true });
-            } else {
-                collapse();
-            }
+            this.#collapseUpdatedOn(container);
             return;
         }
+
+        const text = Utils.formatUpdatedOn(updatedOn);
 
         if (!container) {
-            container = document.createElement('div');
-            container.className = 'updated-wrapper';
-            this.#footer.prepend(container);
-
-            const el = document.createElement('div');
-            el.className = 'updated-on glass-panel secondary-text';
-            el.textContent = Utils.formatUpdatedOn(updatedOn);
-            container.appendChild(el);
-
-            const width = el.getBoundingClientRect().width;
-
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    container.style.width = `${width}px`;
-                    container.classList.add('is-expanded');
-
-                    container.addEventListener('transitionend', (e) => {
-                        if (e.target !== container) return;
-                        requestAnimationFrame(() => el.classList.add('is-visible'));
-                    }, { once: true });
-                });
-            });
+            this.#expandUpdatedOn(this.#createUpdatedWrapper(), text);
             return;
         }
 
-        let el = container.querySelector('.updated-on');
-        if (!el) {
-            el = document.createElement('div');
-            el.className = 'updated-on glass-panel secondary-text';
-            container.appendChild(el);
-        }
-        el.textContent = Utils.formatUpdatedOn(updatedOn);
+        const el = container.querySelector('.updated-on');
 
-        const width = el.getBoundingClientRect().width;
-        container.style.width = `${width}px`;
-
-        if (!container.classList.contains('is-expanded')) {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    container.classList.add('is-expanded');
-                    container.addEventListener('transitionend', (e) => {
-                        if (e.target !== container) return;
-                        requestAnimationFrame(() => el.classList.add('is-visible'));
-                    }, { once: true });
-                });
-            });
+        if (el && el.classList.contains('is-visible')) {
+            el.classList.remove('is-visible');
+            el.addEventListener('transitionend', (e) => {
+                if (e.target !== el) return;
+                this.#expandUpdatedOn(container, text);
+            }, { once: true });
         } else {
-            requestAnimationFrame(() => el.classList.add('is-visible'));
+            this.#expandUpdatedOn(container, text);
         }
     }
 

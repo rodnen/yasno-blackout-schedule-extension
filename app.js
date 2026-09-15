@@ -41,11 +41,8 @@ export class App {
             if (type === 'dsoId') {
                 const { dsoId } = this.selectManager.getValues();
 
-                if (dsoId === 'none' || dsoId === undefined) {
-                    this.inputManager.removeInputs();
-                } else {
-                    this.inputManager.renderInputs();
-                }
+                if (Utils.isInvalidValue(dsoId)) this.inputManager.removeInputs();
+                else this.inputManager.renderInputs();
             }
 
             this.dataManager.loadData();

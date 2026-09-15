@@ -16,12 +16,20 @@ export class MessageManager {
         this.#initContainer();
     }
 
-    show({ text = '', icon = 'ℹ️', type = 'info', id = 'default', closable = true } = {}) {
+    showMessage({
+        text = '',
+        icon = 'ℹ️',
+        type = 'info',
+        id = 'default',
+        closable = true
+    } = {}) {
         if (!this.#elements.header) return null;
         let block = this.#elements.header.querySelector(`.message-block[data-id="${id}"]`);
 
         if (block) {
-            this.#updateMessageBlock(block, { text, icon, type });
+            this.#updateMessageBlock(block, { id, text, icon, type });
+            block.style.opacity = '1';
+            block.style.transform = 'translateY(0)';
             return block;
         }
 
@@ -122,12 +130,13 @@ export class MessageManager {
 
     #createMessageElement({ text, icon, type, id, closable }) {
         const block = document.createElement('div');
-        block.className = 'message-block';
+        block.className = 'message-block glass-panel';
         block.dataset.id = id;
         block.style.cssText = 'opacity: 0; transform: translateY(-10px); transition: all 0.2s ease;';
 
         const item = document.createElement('div');
-        item.className = `message-item g-075 message-${type}`;
+        item.className = `message-item g-075 p-8`;
+        item.dataset.type = type;
 
         const iconEl = document.createElement('span');
         iconEl.className = 'message-icon';
@@ -137,17 +146,24 @@ export class MessageManager {
         content.className = 'message-content flex-between';
 
         const textEl = document.createElement('span');
+        textEl.className = 'message-text';
         textEl.textContent = text;
         content.appendChild(textEl);
 
         item.append(iconEl, content);
 
         if (closable) {
+
             const closeBtn = document.createElement('button');
-            closeBtn.className = 'cross-icon flex-center';
-            closeBtn.innerText = '❌';
+            const closeIcon = document.createElement('div');
+
+            closeBtn.className = 'btn app-btn glass-panel flex-center';
             closeBtn.title = 'Закрити';
-            closeBtn.setAttribute('aria-label', 'Закрити');
+            closeBtn.style.cssText = 'background: var(--accent-glass);';
+            closeBtn.append(closeIcon);
+
+            closeIcon.className = 'icon ic_cross';
+
             closeBtn.addEventListener('click', () => this.hide(block), { once: true });
             item.appendChild(closeBtn);
         }
@@ -158,7 +174,8 @@ export class MessageManager {
 
     #createToastElement({ text, icon, type, id }) {
         const toast = document.createElement('div');
-        toast.className = `toast-msg glass-panel g-8 flex-center toast-${type}`;
+        toast.className = `toast-msg glass-panel g-8 flex-center}`;
+        toast.dataset.type = type;
         toast.dataset.id = id;
 
         if (icon) {
@@ -175,12 +192,15 @@ export class MessageManager {
         return toast;
     }
 
-    #updateMessageBlock(block, { text, icon, type }) {
+    #updateMessageBlock(block, { id, text, icon, type }) {
         const item = block.querySelector('.message-item');
         const iconEl = block.querySelector('.message-icon');
         const textEl = block.querySelector('.message-content span');
 
-        if (item) item.className = `message-item g-075 message-${type}`;
+        if (item) {
+            item.dataset.id = id;
+            item.dataset.type = type;
+        }
         if (iconEl) iconEl.innerHTML = icon;
         if (textEl) textEl.textContent = text;
     }
@@ -190,7 +210,10 @@ export class MessageManager {
         const iconEl = element.querySelector('.toast-icon');
         const textEl = element.querySelector('.toast-text');
 
-        element.className = `toast-msg glass-panel g-8 flex-center toast-${type} show`;
+        if (element) {
+            element.dataset.type = type;
+            element.classList.add('show');
+        }
         if (iconEl) iconEl.classList.add(icon);
         if (textEl) textEl.textContent = emotional ? this.#addEmotionalEnding(text) : text;
     }

@@ -14,6 +14,7 @@ export class DataManager {
     #isRunning = false;
     #pendingCall = false;
     #throttleTimer = null;
+    #coalesceScheduled = false;
 
     constructor(dom, selectManager, dateManager) {
         this.dom = dom;
@@ -23,6 +24,12 @@ export class DataManager {
     }
 
     async loadData() {
+        if (this.#coalesceScheduled) return;
+        this.#coalesceScheduled = true;
+
+        await Promise.resolve();
+        this.#coalesceScheduled = false;
+
         const elapsed = Date.now() - this.#lastRunAt;
 
         if (this.#isRunning || elapsed < LOAD_DATA_MIN_INTERVAL_MS) {
@@ -63,18 +70,20 @@ export class DataManager {
     }
 
     async #fetchAndRender() {
+        const { group, regionId, dsoId } = this.selectManager.getValues();
+
+        if (Utils.isInvalidValue(group, regionId, dsoId)) {
+            this.#box.setContent(Utils.buildStatusIndicatorHTML('choose'));
+            this.#box.setUpdatedOn(null);
+            return;
+        }
+
         const modeKey = await Utils.getModeKey();
         const strategy = MODE_STRATEGIES[modeKey];
 
         if (!strategy) {
-            console.error(`Unknown mode key: ${modeKey}`);
-            this.#box.showError();
-            return;
-        }
-
-        const { group, regionId, dsoId } = this.selectManager.getValues();
-        if (!group) {
-            this.#box.clearLoading();
+            const errorMsg = `Unknown mode key: ${modeKey}`;
+            this.#box.showError(errorMsg);
             return;
         }
 
@@ -96,8 +105,9 @@ export class DataManager {
             this.#box.setUpdatedOn(updatedOn);
             this.#box.scrollToSelected();
         } catch (error) {
-            console.error('[DataManager] loadData error:', error);
-            this.#box.showError();
+            const errorMsg = `loadData error: ${error}`;
+            console.error('[DataManager]', errorMsg);
+            this.#box.showError(errorMsg);
         }
     }
 

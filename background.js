@@ -101,32 +101,6 @@ function slotMinutesToTimestamp(isoDateString, minutes) {
   return d.getTime() + minutes * 60000;
 }
 
-function buildStatusIndicatorHTML(type) {
-  const titles = {
-    ok: 'Відключення',
-    warning: '⏳',
-    danger: '🚨',
-    info: '⏳',
-    choose: '👆'
-  }
-  const statuses = {
-    ok: 'Не застосовуються',
-    warning: 'Очікуємо на більш актуальні дані',
-    danger: 'Екстрені відключення, графіки не діють',
-    info: 'Очікуємо оновлення',
-    choose: 'Оберіть ОСР, щоб перейти до вибору черги'
-  };
-
-  return `
-        <div class="status-indicator flex-center flex-col">
-            <div class="status-title ${type}">${titles[type] ?? ''}</div>
-            <div class="status-badge ${type}">
-                ${statuses[type] ?? ''}
-            </div>
-        </div>
-    `;
-}
-
 function buildSlotHTML({ turn = null, start, end, isOutage, isOutdated, isNow, slotIndex, size }) {
   if ((!isOutage && slotIndex === 0 && size === 1 && !isOutdated && turn === null)) {
     return null;
@@ -227,6 +201,7 @@ async function checkUpdate(owner, repo) {
   }
 
   if (!rsp.ok) {
+    console.warn(`[Update check] GitHub недоступний (HTTP ${rsp.status})`);
     return { success: false, error: `GitHub недоступний (HTTP ${rsp.status})` };
   }
 
@@ -234,10 +209,12 @@ async function checkUpdate(owner, repo) {
   try {
     latest = await rsp.json();
   } catch (e) {
+    console.warn(`Некоректна відповідь GitHub`);
     return { success: false, error: 'Некоректна відповідь GitHub' };
   }
 
   if (!latest?.tag_name) {
+    console.warn(`Релізи не знайдено`);
     return { success: false, error: 'Релізи не знайдено' };
   }
 
@@ -249,8 +226,8 @@ async function checkUpdate(owner, repo) {
     chrome.notifications.create('update-available', {
       type: 'basic',
       iconUrl: 'icons/icon128.png',
-      title: 'New version available',
-      message: `${repo} ${latestVer} is out. Click to download.`
+      title: 'Доступно оновлення',
+      message: `Версія ${latestVer} вийшла. Натисніть для оновлення.`
     });
   }
 
@@ -261,10 +238,10 @@ async function checkUpdate(owner, repo) {
    YASNO
    ======================================== */
 async function buildTableHTML(group = 'all', regionId = '3', dsoId = '301', currentDayNumber = new Date().getDate(), dayType = 'today') {
-  if (regionId === 'none' || dsoId === 'none') {
+  if (Utils.isInvalidValue(regionId, dsoId)) {
     return {
       success: true,
-      html: buildStatusIndicatorHTML('choose'),
+      html: Utils.buildStatusIndicatorHTML('choose'),
       updatedOn: null,
       outageDates: []
     };
@@ -324,7 +301,7 @@ async function buildTableHTML(group = 'all', regionId = '3', dsoId = '301', curr
       isOutdated = schedules?.[effectiveDayType]?.status === 'WaitingForSchedule';
 
       if (slots.length) hasAnySlots = true;
-      if (isOutdated && hasAnySlots) rows.push(buildStatusIndicatorHTML('warning'));
+      if (isOutdated && hasAnySlots) rows.push(Utils.buildStatusIndicatorHTML('warning'));
 
       for (const slot of slots) {
         rows.push(buildSlotHTML({
@@ -353,9 +330,9 @@ async function buildTableHTML(group = 'all', regionId = '3', dsoId = '301', curr
       }
     }
 
-    if (isEmergency) rows.push(buildStatusIndicatorHTML('danger'));
-    else if (isNoOutages) rows.push(buildStatusIndicatorHTML('ok'));
-    else if (!hasAnySlots) rows.push(buildStatusIndicatorHTML('info'));
+    if (isEmergency) rows.push(Utils.buildStatusIndicatorHTML('danger'));
+    else if (isNoOutages) rows.push(Utils.buildStatusIndicatorHTML('ok'));
+    else if (!hasAnySlots) rows.push(Utils.buildStatusIndicatorHTML('info'));
 
     outageDates.sort((a, b) => a - b);
 
@@ -427,7 +404,7 @@ function renderDTEKTable(factData, group, dayType) {
 
   const dayData = factData.data?.[key];
 
-  if (!dayData) return buildStatusIndicatorHTML('ok');
+  if (!dayData) return Utils.buildStatusIndicatorHTML('ok');
 
   const groups = group === 'all' ? Object.keys(dayData).filter(k => k.startsWith('GPV')) : [`GPV${group}`];
 
@@ -482,10 +459,10 @@ function renderDTEKTable(factData, group, dayType) {
 }
 
 async function buildTableHTMLDTEK(type = 'dnem', group = 'all', dayType = 'today') {
-  if (type === 'none') {
+  if (Utils.isInvalidValue(type)) {
     return {
       success: true,
-      html: buildStatusIndicatorHTML('choose'),
+      html: Utils.buildStatusIndicatorHTML('choose'),
       updatedOn: null,
       outageDates: []
     };
@@ -500,7 +477,7 @@ async function buildTableHTMLDTEK(type = 'dnem', group = 'all', dayType = 'today
     rawData = await fetchDTEKDefData(type);
     if (!rawData) return null;
   }
- 
+
   if (!fromCache) {
     const key = `dtek:raw:data-${type}`;
     Utils.setStorageData({

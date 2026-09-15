@@ -174,7 +174,7 @@ export class MessageManager {
 
     #createToastElement({ text, icon, type, id }) {
         const toast = document.createElement('div');
-        toast.className = `toast-msg glass-panel g-8 flex-center}`;
+        toast.className = `toast-msg glass-panel g-8 flex-center`;
         toast.dataset.type = type;
         toast.dataset.id = id;
 

@@ -1905,29 +1905,29 @@ input:checked+.slider:before {
   background-color: transparent;
 }
 
-.toast-info .toast-icon {
+.toast-msg[data-type="info"] .toast-icon {
   background-color: var(--toast-info-text);
 }
 
-.toast-success .toast-icon {
+.toast-msg[data-type="success"] .toast-icon {
   background-color: var(--toast-success-text);
 }
 
-.toast-error .toast-icon {
+.toast-msg[data-type="error"] .toast-icon {
   background-color: var(--toast-error-text);
 }
 
-.toast-info {
+.toast-msg[data-type="info"] {
   background: var(--toast-info);
   color: var(--toast-info-text);
 }
 
-.toast-success {
+.toast-msg[data-type="success"] {
   background: var(--toast-success);
   color: var(--toast-success-text);
 }
 
-.toast-error {
+.toast-msg[data-type="error"] {
   background: var(--toast-error);
   color: var(--toast-error-text);
 }
